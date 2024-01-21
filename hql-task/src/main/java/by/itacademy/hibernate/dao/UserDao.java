@@ -1,10 +1,17 @@
 package by.itacademy.hibernate.dao;
 
-import by.itacademy.hibernate.entity.Payment;
-import by.itacademy.hibernate.entity.User;
+import by.itacademy.hibernate.dto.CompanyFilter;
+import by.itacademy.hibernate.entity.*;
+import com.querydsl.core.Tuple;
+import com.querydsl.jpa.impl.JPAQuery;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.hibernate.Session;
+
+import static by.itacademy.hibernate.entity.QCompany.company;
+import static by.itacademy.hibernate.entity.QPayment.payment;
+import static by.itacademy.hibernate.entity.QPersonalInfo.personalInfo;
+import static by.itacademy.hibernate.entity.QUser.user;
 
 import java.util.List;
 
@@ -91,6 +98,69 @@ public class UserDao {
                                    "group by u.username " +
                                    "having avg(p.amount) > (select avg(p2.amount) from Payment p2)", Object[].class)
                 .list();
+    }
+
+    /**
+     * Максимальные и минимальные выплаты сотрудников, сортировка по фамилии
+     */
+    public List<Tuple> findMinAndMaxPaymentsOrderedByLastName(Session session) {
+        return new JPAQuery<Tuple>(session)
+                .select(user.personalInfo.lastname, payment.amount.max(), payment.amount.min())
+                .from(payment)
+                .join(payment.receiver, user)
+                .groupBy(user.personalInfo.lastname)
+                .fetch();
+    }
+
+    /**
+     * Максимальная длина ФИО сотрудника
+     */
+    public Integer findMaxName(Session session) {
+        return new JPAQuery<Integer>(session)
+                .select((user.personalInfo.lastname.concat(user.personalInfo.firstname)).length().max())
+                .from(user)
+                .fetchOne();
+    }
+
+    /**
+     * Даты рождения всех сотрудников заданной в фильтре компании
+     */
+    public List<Birthday> findBirthdayByCompany(Session session, CompanyFilter filter) {
+        var predicate = QPredicate.builder()
+                .add(filter.getName(), user.company.name::eq)
+                .buildAnd();
+
+        return new JPAQuery<List>(session)
+                .select(personalInfo.birthDate)
+                .from(user)
+                .where(predicate)
+                .fetch();
+    }
+
+    /**
+     * Количество сотрудников в каждой компании
+     */
+    public List<Tuple> findCountUserInCompany(Session session) {
+        return new JPAQuery<Tuple>(session)
+                .select(user.count(), company.name)
+                .from(user)
+                .groupBy(company.name)
+                .orderBy(company.name.asc())
+                .fetch();
+    }
+
+    /**
+     * Сумма выплат в каждой компании
+     */
+    public List<Tuple> findSumPaymentInCompany(Session session) {
+        return new JPAQuery<Tuple>(session)
+                .select(company.name, payment.amount.sum())
+                .from(company)
+                .join(company.users, user)
+                .join(user.payments, payment)
+                .groupBy(company.name)
+                .orderBy(company.name.asc())
+                .fetch();
     }
 
     public static UserDao getInstance() {
